@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Graphica Web</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #f0f0f0;
+      --text: #000;
+      --primary: #27ae60;
+    }
+    [data-theme="dark"] {
+      --bg: #1e1e1e;
+      --text: #fff;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px;
+      background: var(--primary);
+      color: white;
+    }
+    header input, header select, header button {
+      padding: 6px 10px;
+      font-size: 14px;
+    }
+    header button {
+      background: white;
+      color: var(--primary);
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: var(--bg);
+    }
+    canvas {
+      max-height: 90%;
+      max-width: 100%;
+    }
+    footer {
+      text-align: center;
+      padding: 8px;
+      font-size: 14px;
+      background: #eaeaea;
+      color: #333;
+    }
+  </style>
+</head>
+<body data-theme="light">
+
+  <header>
+    <input type="file" id="fileInput" />
+    <select id="chartType">
+      <option value="Auto">Auto</option>
+      <option value="Bar">Bar</option>
+      <option value="Pie">Pie</option>
+      <option value="Line">Line</option>
+    </select>
+    <button onclick="processFile()">Visualize</button>
+    <button onclick="downloadChart()">Export</button>
+    <button onclick="clearAll()">Clear</button>
+    <button onclick="toggleTheme()">🌗 Theme</button>
+  </header>
+
+  <main>
+    <canvas id="chartCanvas"></canvas>
+  </main>
+
+  <footer>
+    Made by <strong>Curry Industry</strong> — All rights reserved.
+  </footer>
+
+  <script>
+    let chart;
+
+    function toggleTheme() {
+      const body = document.body;
+      body.dataset.theme = body.dataset.theme === "dark" ? "light" : "dark";
+    }
+
+    function clearAll() {
+      document.getElementById("fileInput").value = "";
+      if (chart) chart.destroy();
+    }
+
+    function downloadChart() {
+      if (!chart) return;
+      const link = document.createElement("a");
+      link.href = chart.toBase64Image();
+      link.download = "chart.png";
+      link.click();
+    }
+
+    function processFile() {
+      const file = document.getElementById("fileInput").files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const data = parseFile(file.name, reader.result);
+        if (!data) return;
+
+        const typeSel = document.getElementById("chartType").value;
+        const type = typeSel === "Auto" ? detectChartType(data) : typeSel;
+        drawChart(data, file.name, type);
+      };
+      reader.readAsText(file);
+    }
+
+    function parseFile(name, content) {
+      const ext = name.split('.').pop().toLowerCase();
+      try {
+        if (ext === "csv") return parseCSV(content);
+        if (ext === "json") return parseJSON(content);
+        if (ext === "txt") return parseTally(content);
+      } catch { return null; }
+      return null;
+    }
+
+    function parseCSV(txt) {
+      const rows = txt.trim().split("\n");
+      const data = {};
+      rows.slice(1).forEach(row => {
+        const [k, v] = row.split(",");
+        data[k] = parseFloat(v);
+      });
+      return data;
+    }
+
+    function parseJSON(txt) {
+      const obj = JSON.parse(txt);
+      const data = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (typeof v === "number") data[k] = v;
+      }
+      return data;
+    }
+
+    function parseTally(txt) {
+      const data = {};
+      txt.split("\n").forEach(line => {
+        const [k, v] = line.split(":");
+        if (k && v) data[k.trim()] = (v.match(/\|/g) || []).length;
+      });
+      return data;
+    }
+
+    function detectChartType(data) {
+      const values = Object.values(data);
+      if (values.length <= 6 && values.every(v => v / values.reduce((a,b)=>a+b, 0) >= 0.05)) return "Pie";
+      if (values.length >= 10 && Object.keys(data).every((v,i,a)=> i===0 || a[i-1]<=v)) return "Line";
+      return "Bar";
+    }
+
+    function drawChart(data, title, type) {
+      const ctx = document.getElementById("chartCanvas").getContext("2d");
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
+        type: type.toLowerCase(),
+        data: {
+          labels: Object.keys(data),
+          datasets: [{
+            label: title,
+            data: Object.values(data),
+            backgroundColor: ["#27ae60", "#2ecc71", "#1abc9c", "#f39c12", "#8e44ad", "#2980b9"],
+            borderColor: "#27ae60",
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: type !== "bar" },
+            title: { display: true, text: title }
+          }
+        }
+      });
+    }
+  </script>
+</body>
+</html>
+
