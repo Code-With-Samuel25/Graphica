@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Graphica Universal</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #f0f0f0;
+      --text: #000;
+      --primary: #27ae60;
+    }
+    [data-theme="dark"] {
+      --bg: #1e1e1e;
+      --text: #fff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px;
+      background: var(--primary);
+      color: white;
+    }
+    header input, header select, header button {
+      padding: 6px 10px;
+      font-size: 14px;
+    }
+    header button {
+      background: white;
+      color: var(--primary);
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px;
+      gap: 10px;
+      background: var(--bg);
+    }
+    textarea {
+      width: 100%;
+      max-width: 900px;
+      height: 100px;
+      padding: 10px;
+      font-size: 14px;
+    }
+    table {
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    table, th, td {
+      border: 1px solid #aaa;
+      padding: 5px;
+    }
+    canvas {
+      max-height: 400px;
+      max-width: 100%;
+    }
+    footer {
+      text-align: center;
+      padding: 8px;
+      font-size: 14px;
+      background: #eaeaea;
+      color: #333;
+    }
+  </style>
+</head>
+<body data-theme="light">
+  <header>
+    <select id="chartType">
+      <option value="Auto">Auto</option>
+      <option value="Bar">Bar</option>
+      <option value="Pie">Pie</option>
+      <option value="Line">Line</option>
+    </select>
+    <button onclick="analyzeText()">Convert Text</button>
+    <button onclick="downloadChart()">Export</button>
+    <button onclick="toggleTheme()">🌗 Theme</button>
+    <button onclick="useManualMode()">Manual Table</button>
+  </header>
+
+  <main>
+    <textarea id="textInput" placeholder="Paste any data here... (e.g. Apple: 30, Orange: 20)"></textarea>
+    <div id="manualTableArea" style="display:none;">
+      <table id="manualTable">
+        <tr><th>Label</th><th>Value</th></tr>
+        <tr><td><input value="Example"/></td><td><input value="10"/></td></tr>
+      </table>
+      <button onclick="addRow()">Add Row</button>
+      <button onclick="chartManual()">Chart This Table</button>
+    </div>
+    <canvas id="chartCanvas"></canvas>
+  </main>
+
+  <footer>
+    Made by <strong>Curry Industry</strong> — All rights reserved.
+  </footer>
+
+  <script>
+    let chart;
+
+    function toggleTheme() {
+      document.body.dataset.theme = document.body.dataset.theme === "dark" ? "light" : "dark";
+    }
+
+    function downloadChart() {
+      if (!chart) return;
+      const link = document.createElement("a");
+      link.href = chart.toBase64Image();
+      link.download = "chart.png";
+      link.click();
+    }
+
+    function detectChartType(data) {
+      const values = Object.values(data);
+      if (values.length <= 6 && values.every(v => v / values.reduce((a,b)=>a+b, 0) >= 0.05)) return "Pie";
+      if (values.length >= 10 && Object.keys(data).every((v,i,a)=> i===0 || a[i-1]<=v)) return "Line";
+      return "Bar";
+    }
+
+    function drawChart(data, title, type) {
+      const ctx = document.getElementById("chartCanvas").getContext("2d");
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: type.toLowerCase(),
+        data: {
+          labels: Object.keys(data),
+          datasets: [{
+            label: title,
+            data: Object.values(data),
+            backgroundColor: ["#27ae60", "#2ecc71", "#1abc9c", "#f39c12", "#8e44ad", "#2980b9"],
+            borderColor: "#27ae60",
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: type !== "bar" },
+            title: { display: true, text: title }
+          }
+        }
+      });
+    }
+
+    function analyzeText() {
+      const input = document.getElementById("textInput").value.trim();
+      const lines = input.split("\n");
+      const data = {};
+
+      lines.forEach(line => {
+        const match = line.match(/^(.+?)[\s:\-,]+([\d.]+)$/);
+        if (match) {
+          const key = match[1].trim();
+          const val = parseFloat(match[2]);
+          if (!isNaN(val)) data[key] = val;
+        }
+      });
+
+      if (Object.keys(data).length > 0) {
+        const chartType = document.getElementById("chartType").value;
+        const actualType = chartType === "Auto" ? detectChartType(data) : chartType;
+        drawChart(data, "Parsed Chart", actualType);
+        document.getElementById("manualTableArea").style.display = "none";
+      } else {
+        alert("Couldn't detect structure. Try Manual Mode.");
+      }
+    }
+
+    function useManualMode() {
+      document.getElementById("manualTableArea").style.display = "block";
+    }
+
+    function addRow() {
+      const table = document.getElementById("manualTable");
+      const row = table.insertRow();
+      const cell1 = row.insertCell(0);
+      const cell2 = row.insertCell(1);
+      cell1.innerHTML = '<input />';
+      cell2.innerHTML = '<input />';
+    }
+
+    function chartManual() {
+      const table = document.getElementById("manualTable");
+      const data = {};
+      for (let i = 1; i < table.rows.length; i++) {
+        const label = table.rows[i].cells[0].querySelector("input").value;
+        const value = parseFloat(table.rows[i].cells[1].querySelector("input").value);
+        if (label && !isNaN(value)) {
+          data[label] = value;
+        }
+      }
+
+      if (Object.keys(data).length > 0) {
+        const chartType = document.getElementById("chartType").value;
+        const actualType = chartType === "Auto" ? detectChartType(data) : chartType;
+        drawChart(data, "Manual Chart", actualType);
+      } else {
+        alert("No valid data entered.");
+      }
+    }
+  </script>
+</body>
+</html>
+
+
