@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Graphica Universal</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -52,6 +52,7 @@
       padding: 10px;
       gap: 10px;
       background: var(--bg);
+      overflow-y: auto;
     }
     textarea {
       width: 100%;
@@ -59,18 +60,43 @@
       height: 100px;
       padding: 10px;
       font-size: 14px;
+      resize: vertical;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-family: monospace;
     }
     table {
       border-collapse: collapse;
       margin-top: 10px;
+      max-width: 900px;
+      width: 100%;
     }
     table, th, td {
       border: 1px solid #aaa;
       padding: 5px;
+      text-align: left;
     }
     canvas {
       max-height: 400px;
       max-width: 100%;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: white;
+    }
+    #stemLeafArea {
+      display: none;
+      max-width: 900px;
+      width: 100%;
+      background: #fff;
+      color: #000;
+      padding: 20px;
+      font-family: monospace;
+      font-size: 18px;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      user-select: text;
     }
     footer {
       text-align: center;
@@ -78,6 +104,13 @@
       font-size: 14px;
       background: #eaeaea;
       color: #333;
+    }
+    /* Dark theme for stem leaf */
+    [data-theme="dark"] #stemLeafArea {
+      background: #2c2c2c;
+      color: #eee;
+      border-color: #555;
+      box-shadow: 0 0 10px rgba(255,255,255,0.1);
     }
   </style>
 </head>
@@ -88,6 +121,13 @@
       <option value="Bar">Bar</option>
       <option value="Pie">Pie</option>
       <option value="Line">Line</option>
+      <option value="Histogram">Histogram</option>
+      <option value="Scatter">Scatter</option>
+      <option value="Box">Box Plot</option>
+      <option value="Radar">Radar</option>
+      <option value="Doughnut">Doughnut</option>
+      <option value="PolarArea">Polar Area</option>
+      <option value="StemLeaf">Stem-and-Leaf</option>
     </select>
     <button onclick="analyzeText()">Convert Text</button>
     <button onclick="downloadChart()">Export</button>
@@ -96,8 +136,8 @@
   </header>
 
   <main>
-    <textarea id="textInput" placeholder="Paste any data here... (e.g. Apple: 30, Orange: 20)"></textarea>
-    <div id="manualTableArea" style="display:none;">
+    <textarea id="textInput" placeholder="Paste any data here... (e.g. Apple: 30, 1, 2, 3, 4)"></textarea>
+    <div id="manualTableArea" style="display:none; max-width: 900px; width: 100%;">
       <table id="manualTable">
         <tr><th>Label</th><th>Value</th></tr>
         <tr><td><input value="Example"/></td><td><input value="10"/></td></tr>
@@ -106,6 +146,7 @@
       <button onclick="chartManual()">Chart This Table</button>
     </div>
     <canvas id="chartCanvas"></canvas>
+    <pre id="stemLeafArea"></pre>
   </main>
 
   <footer>
@@ -120,30 +161,98 @@
     }
 
     function downloadChart() {
-      if (!chart) return;
+      if (!chart) return alert("No chart to export.");
       const link = document.createElement("a");
       link.href = chart.toBase64Image();
       link.download = "chart.png";
       link.click();
     }
 
-    function detectChartType(data) {
+    function detectChartType(data, rawValuesOnly = false) {
       const values = Object.values(data);
+      if (rawValuesOnly) {
+        if (values.length > 20) return "Histogram";
+        return "Box";
+      }
       if (values.length <= 6 && values.every(v => v / values.reduce((a,b)=>a+b, 0) >= 0.05)) return "Pie";
       if (values.length >= 10 && Object.keys(data).every((v,i,a)=> i===0 || a[i-1]<=v)) return "Line";
       return "Bar";
     }
 
+    function renderStemLeaf(values) {
+      document.getElementById("chartCanvas").style.display = "none";
+      const pre = document.getElementById("stemLeafArea");
+      pre.style.display = "block";
+
+      const stems = {};
+      values.sort((a, b) => a - b).forEach(num => {
+        const str = Math.floor(num).toString();
+        const stem = str.slice(0, -1) || "0";
+        const leaf = str.slice(-1);
+        if (!stems[stem]) stems[stem] = [];
+        stems[stem].push(leaf);
+      });
+
+      let output = "Stem | Leaf\n";
+      output += "------------\n";
+      for (const [stem, leaves] of Object.entries(stems)) {
+        output += `${stem.padEnd(4)}| ${leaves.join(" ")}\n`;
+      }
+      pre.textContent = output;
+    }
+
     function drawChart(data, title, type) {
       const ctx = document.getElementById("chartCanvas").getContext("2d");
+      document.getElementById("stemLeafArea").style.display = "none";
+      document.getElementById("chartCanvas").style.display = "block";
       if (chart) chart.destroy();
+
+      const labels = Object.keys(data);
+      const values = Object.values(data);
+
+      if (type === "StemLeaf") {
+        renderStemLeaf(values);
+        return;
+      }
+
+      if (type === "Histogram") {
+        const bins = 10;
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const binSize = (max - min) / bins;
+        const hist = new Array(bins).fill(0);
+        values.forEach(v => {
+          let idx = Math.floor((v - min) / binSize);
+          if (idx >= bins) idx = bins - 1;
+          hist[idx]++;
+        });
+        const binLabels = hist.map((_, i) => `${(min + i * binSize).toFixed(1)}–${(min + (i + 1) * binSize).toFixed(1)}`);
+        chart = new Chart(ctx, {
+          type: 'bar',
+          data: { labels: binLabels, datasets: [{ label: 'Frequency', data: hist, backgroundColor: '#2980b9' }] }
+        });
+        return;
+      }
+
+      if (type === "Box") {
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted[mid];
+        chart = new Chart(ctx, {
+          type: 'bar',
+          data: { labels: ['Box Plot'], datasets: [{ label: title, data: [median], backgroundColor: '#9b59b6' }] },
+          options: { plugins: { title: { display: true, text: 'Box Plot (simplified)' } } }
+        });
+        return;
+      }
+
       chart = new Chart(ctx, {
         type: type.toLowerCase(),
         data: {
-          labels: Object.keys(data),
+          labels: labels,
           datasets: [{
             label: title,
-            data: Object.values(data),
+            data: values,
             backgroundColor: ["#27ae60", "#2ecc71", "#1abc9c", "#f39c12", "#8e44ad", "#2980b9"],
             borderColor: "#27ae60",
             borderWidth: 1
@@ -161,26 +270,41 @@
 
     function analyzeText() {
       const input = document.getElementById("textInput").value.trim();
-      const lines = input.split("\n");
-      const data = {};
+      const rawLines = input.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
 
-      lines.forEach(line => {
-        const match = line.match(/^(.+?)[\s:\-,]+([\d.]+)$/);
+      // Try labeled format first
+      const data = {};
+      let labeledFound = false;
+      rawLines.forEach(line => {
+        const match = line.match(/^(.+?)[\s:\-,]+([-\d.]+)$/);
         if (match) {
           const key = match[1].trim();
           const val = parseFloat(match[2]);
-          if (!isNaN(val)) data[key] = val;
+          if (!isNaN(val)) {
+            data[key] = val;
+            labeledFound = true;
+          }
         }
       });
 
-      if (Object.keys(data).length > 0) {
+      // If not labeled, assume raw numbers
+      if (!labeledFound) {
+        const values = rawLines.map(x => parseFloat(x)).filter(x => !isNaN(x));
+        if (values.length > 0) {
+          values.forEach((v, i) => data[i + 1] = v);
+          const chartType = document.getElementById("chartType").value;
+          const actualType = chartType === "Auto" ? detectChartType(data, true) : chartType;
+          drawChart(data, "Auto-Detected Chart", actualType);
+          return;
+        }
+      } else {
         const chartType = document.getElementById("chartType").value;
         const actualType = chartType === "Auto" ? detectChartType(data) : chartType;
         drawChart(data, "Parsed Chart", actualType);
-        document.getElementById("manualTableArea").style.display = "none";
-      } else {
-        alert("Couldn't detect structure. Try Manual Mode.");
+        return;
       }
+
+      alert("Couldn't detect structure. Try Manual Mode.");
     }
 
     function useManualMode() {
@@ -190,10 +314,8 @@
     function addRow() {
       const table = document.getElementById("manualTable");
       const row = table.insertRow();
-      const cell1 = row.insertCell(0);
-      const cell2 = row.insertCell(1);
-      cell1.innerHTML = '<input />';
-      cell2.innerHTML = '<input />';
+      row.insertCell(0).innerHTML = '<input />';
+      row.insertCell(1).innerHTML = '<input />';
     }
 
     function chartManual() {
@@ -206,7 +328,6 @@
           data[label] = value;
         }
       }
-
       if (Object.keys(data).length > 0) {
         const chartType = document.getElementById("chartType").value;
         const actualType = chartType === "Auto" ? detectChartType(data) : chartType;
